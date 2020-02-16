@@ -639,8 +639,13 @@ int main(int argc, char** argv) {
             }
         }
         cps = zoomedComplexPlane(cps, mousePos, zoomFactor);
-        maxIterations = maxIterations +
-                maxIterations * (zoomFactor * iterationsFactor);
+        if (zoomFactor > 1.0) {
+			maxIterations = maxIterations +
+					maxIterations * (zoomFactor * iterationsFactor);
+        } else if (zoomFactor < 1.0) {
+			maxIterations = maxIterations -
+					maxIterations * (zoomFactor * iterationsFactor);
+        }
     }
     return 0;
 }
