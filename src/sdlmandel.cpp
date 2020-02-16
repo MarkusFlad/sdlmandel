@@ -21,6 +21,24 @@ const auto numberOfCpuCores = std::thread::hardware_concurrency();
 constexpr static std::size_t MAX_VECTORIZATION = 8;
 #endif
 
+// Class representing a resolution of a screen in pixels.
+class Resolution {
+public:
+	Resolution(int width, int height)
+	: _width (width)
+	, _height (height) {
+	}
+	int width() const {
+		return _width;
+	}
+	int height() const {
+		return _height;
+	}
+private:
+	int _width;
+	int _height;
+};
+
 // Class that encapsulates the SDL Surface. Instances of this class can be used
 // to prepare an image in normal RAM (which the CPU can access).
 // Provides interlaced canvases that allow different threads to update different
@@ -38,10 +56,10 @@ private:
 public:
     typedef std::size_t Size;
 public:
-    Surface(int width, int height)
-    : _surface(SDL_CreateRGBSurface(
-            0, width, height, COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
-    , _pixelNumber (width * height) {
+    Surface(const Resolution& resolution)
+    : _surface(SDL_CreateRGBSurface(0, resolution.width(), resolution.height(),
+    		COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
+    , _pixelNumber (resolution.width() * resolution.height()) {
     }
     ~Surface() {
         if (_surface) {
@@ -175,10 +193,10 @@ class Window {
 private:
     SDL_Window* _window;
 public:
-    Window(std::string title, int width, int height, bool fullscreen)
+    Window(std::string title, const Resolution& resolution, bool fullscreen)
     : _window(SDL_CreateWindow(title.c_str(),
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-            width, height, 0)) {
+			resolution.width(), resolution.height(), 0)) {
     	if (fullscreen) {
     		SDL_SetWindowFullscreen(_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     	}
@@ -413,9 +431,11 @@ private:
 template<class NumberType>
 ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
         NumberType realCenter, NumberType imagCenter, NumberType imagRange,
-        int width, int height) {
-    NumberType pixelPerValue = static_cast<NumberType>(height) / imagRange;
-    NumberType realRange = static_cast<NumberType>(width) / pixelPerValue;
+        const Resolution& resolution) {
+    NumberType pixelPerValue =
+    		static_cast<NumberType>(resolution.height()) / imagRange;
+    NumberType realRange =
+    		static_cast<NumberType>(resolution.width()) / pixelPerValue;
     NumberType realRangeHalf = realRange / 2.0;
     NumberType realMin = realCenter - realRangeHalf;
     NumberType realMax = realCenter + realRangeHalf;
@@ -572,6 +592,23 @@ public:
     }
 };
 
+int fitToNextRaster(int n, int raster) {
+	return n + (raster - n % raster);
+}
+Resolution getFittingResolution (int desiredWidth, int desiredHeight) {
+	return Resolution(fitToNextRaster(desiredWidth, MAX_VECTORIZATION),
+			fitToNextRaster(desiredHeight, numberOfCpuCores));
+}
+Resolution getDesktopCompatibleResolution (double factor) {
+	SDL_DisplayMode mode;
+	if (SDL_GetDesktopDisplayMode(0, &mode) == 0) {
+		int width = mode.w * factor;
+		int height = mode.h * factor;
+		return getFittingResolution(width, height);
+	}
+	return Resolution(0, 0);
+}
+
 #if defined(__AVX512BW__)
 typedef Simd512DUnion SystemSimdUnion;
 #elif defined __AVX__
@@ -590,20 +627,21 @@ int main(int argc, char** argv) {
     typedef ComplexPlaneCalculator<SystemSimdUnion,
             MandelbrotFunction<SystemSimdUnion,
             SimpleColorEncoder>> MandelbrotCalculator;
-    std::size_t width = 1920;
-    std::size_t height = 1080;
     const NumberType iterationsFactor = 0.0025;
     NumberType maxIterations = 75.0;
-    Surface surface(width, height);
+    Resolution resolution = getDesktopCompatibleResolution(0.5);
+    std::cout << numberOfCpuCores << "\n";
+    std::cout << resolution.height() << "\n";
+    Surface surface(resolution);
     auto canvasVector = surface.provideInterlacedCanvas(numberOfCpuCores);
-    Window window("Mandelbrot", width, height, true);
+    Window window("Mandelbrot", resolution, true);
     int displayedWidth = window.displayedWidth();
     int displayedHeight = window.displayedHeight();
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps =
     		complexPlaneSectionAroundCenter<NumberType>(
-    				-0.5, 0.0, 2.0, width, height);
+    				-0.5, 0.0, 2.0, resolution);
     std::complex<NumberType> cpsCenter = cps.center();
     const NumberType fastZoomFactor = 1.05;
     const NumberType slowZoomFactor = 1.01;
