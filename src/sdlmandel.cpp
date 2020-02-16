@@ -15,14 +15,20 @@ namespace {
 
 #ifdef DEBUG
 const auto numberOfCpuCores = 1;
+constexpr static std::size_t MAX_VECTORIZATION = 1;
 #else
 const auto numberOfCpuCores = std::thread::hardware_concurrency();
+constexpr static std::size_t MAX_VECTORIZATION = 8;
 #endif
 
+// Class that encapsulates the SDL Surface. Instances of this class can be used
+// to prepare an image in normal RAM (which the CPU can access).
+// Provides interlaced canvases that allow different threads to update different
+// areas of the image at the same time.
 class Surface {
 private:
-	static constexpr bool isBigEndian =
-			SDL_BYTEORDER == SDL_BIG_ENDIAN ? true : false;
+    static constexpr bool isBigEndian =
+            SDL_BYTEORDER == SDL_BIG_ENDIAN ? true : false;
     static constexpr Uint32 R_MASK = isBigEndian ? 0xff000000 : 0x000000ff;
     static constexpr Uint32 G_MASK = isBigEndian ? 0x00ff0000 : 0x0000ff00;
     static constexpr Uint32 B_MASK = isBigEndian ? 0x0000ff00 : 0x00ff0000;
@@ -33,14 +39,14 @@ public:
     typedef std::size_t Size;
 public:
     Surface(int width, int height)
-	: _surface(SDL_CreateRGBSurface(
-			0, width, height, COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
-	, _pixelNumber (width * height) {
+    : _surface(SDL_CreateRGBSurface(
+            0, width, height, COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
+    , _pixelNumber (width * height) {
     }
     ~Surface() {
-    	if (_surface) {
-    		SDL_FreeSurface(_surface);
-    	}
+        if (_surface) {
+            SDL_FreeSurface(_surface);
+        }
     }
     Size width() const {
         return _surface->w;
@@ -49,17 +55,17 @@ public:
         return _surface->h;
     }
     Size pixelNumber() const {
-    	return _pixelNumber;
+        return _pixelNumber;
     }
     Uint32* pixels() {
-    	return static_cast<Uint32*>(_surface->pixels);
+        return static_cast<Uint32*>(_surface->pixels);
     }
     struct Line {
         Size y;
         Size width;
         Uint32* pixels;
     };
-    // The InterlacedCanvas provides interlaced access to the bitmap data. Each
+    // The InterlacedCanvas provides interlaced access to the Surface. Each
     // thread must use its own InterlacedCanvas to write to the bitmap.
     class InterlacedCanvas {
     public:
@@ -133,75 +139,84 @@ private:
     Size _pixelNumber;
 };
 
+// Class that encapsulates a SDL texture. A Texture represents an image in the
+// RAM of the graphics card. It cannot be manipulated directly by the CPU. A
+// Texture must be created from a surface. The CPU can only directly access that
+// Surface.
 class Texture {
 private:
     SDL_Texture* _texture;
 public:
     Texture(SDL_Texture* _texture)
-	: _texture(_texture) {
+    : _texture(_texture) {
     }
     ~Texture() {
-    	if (_texture) {
-    		SDL_DestroyTexture(_texture);
-    	}
+        if (_texture) {
+            SDL_DestroyTexture(_texture);
+        }
     }
     friend class Renderer;
 };
 
+// Class that encapsulates an SDL Context. A corresponding object must be
+// created and be valid as long as SDL is required.
 class SdlContext {
 public:
-	SdlContext() {
-		SDL_Init(SDL_INIT_EVERYTHING);
-	}
-	~SdlContext() {
-		SDL_Quit();
-	}
+    SdlContext() {
+        SDL_Init(SDL_INIT_EVERYTHING);
+    }
+    ~SdlContext() {
+        SDL_Quit();
+    }
 };
 
+// Class that encapsulates an SDL window. Represents a Window on the screen.
 class Window {
 private:
     SDL_Window* _window;
 public:
     Window(std::string title, int width, int height)
-	: _window(SDL_CreateWindow(title.c_str(),
-	        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	        width, height, 0)) {
+    : _window(SDL_CreateWindow(title.c_str(),
+            SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+            width, height, 0)) {
     }
     ~Window() {
-    	if (_window) {
-    		SDL_DestroyWindow(_window);
-    	}
+        if (_window) {
+            SDL_DestroyWindow(_window);
+        }
     }
     friend class Renderer;
 };
 
+// Class that encapsulates an SDL renderer. Allows you to create textures from
+// surfaces and copy textures to the target rendering graphics card.
 class Renderer {
 private:
     SDL_Renderer* _renderer;
 public:
     Renderer(Window& window)
-	: _renderer(SDL_CreateRenderer(
-			window._window, -1, SDL_RENDERER_ACCELERATED)) {
+    : _renderer(SDL_CreateRenderer(
+            window._window, -1, SDL_RENDERER_ACCELERATED)) {
     }
     SDL_Renderer* GetSdlObject() const {
-    	return _renderer;
+        return _renderer;
     }
     SDL_Texture* CreateSdlTexture(Surface& surface) {
-    	return SDL_CreateTextureFromSurface(_renderer, surface._surface);
+        return SDL_CreateTextureFromSurface(_renderer, surface._surface);
     }
     void Copy(Texture& texture) {
-    	SDL_RenderCopy(_renderer, texture._texture, NULL, NULL);
+        SDL_RenderCopy(_renderer, texture._texture, NULL, NULL);
     }
     void Clear() {
-    	 SDL_RenderClear(_renderer);
+         SDL_RenderClear(_renderer);
     }
     void Present() {
-    	 SDL_RenderPresent(_renderer);
+         SDL_RenderPresent(_renderer);
     }
     ~Renderer() {
-    	if (_renderer) {
-    		SDL_DestroyRenderer(_renderer);
-    	}
+        if (_renderer) {
+            SDL_DestroyRenderer(_renderer);
+        }
     }
 };
 
@@ -339,94 +354,96 @@ private:
     SimdUnion _imags;
 };
 
+// Class that represents a section in the complex plane. This section is defined
+// by a minimum and maximum complex number.
 template <class NumberType>
 class ComplexPlaneSection {
 public:
-	ComplexPlaneSection (const std::complex<NumberType>& min,
-			const std::complex<NumberType>& max)
-	: _min(min)
-	, _max(max) {
-	}
-	std::complex<NumberType> min() const {
-		return _min;
-	}
-	std::complex<NumberType> max() const {
-		return _max;
-	}
-	NumberType realRange() const {
-		return _max.real() - _min.real();
-	}
-	NumberType imagRange() const {
-		return _max.imag() - _min.imag();
-	}
-	std::complex<NumberType> center() const {
-		return std::complex<NumberType>(realRange() / 2.0, imagRange() / 2.0);
-	}
-	std::complex<NumberType> valueAtPixel(int x, int y, int width, int height) {
-		NumberType onePixelInReal = realRange() / width;
-		NumberType onePixelInImag = imagRange() / height;
-		NumberType valueReal = _min.real() +
-				static_cast<NumberType>(x) * onePixelInReal;
-		NumberType valueImag = _min.imag() +
-				static_cast<NumberType>(y) * onePixelInImag;
-		return std::complex<NumberType>(valueReal, valueImag);
-	}
+    ComplexPlaneSection (const std::complex<NumberType>& min,
+            const std::complex<NumberType>& max)
+    : _min(min)
+    , _max(max) {
+    }
+    std::complex<NumberType> min() const {
+        return _min;
+    }
+    std::complex<NumberType> max() const {
+        return _max;
+    }
+    NumberType realRange() const {
+        return _max.real() - _min.real();
+    }
+    NumberType imagRange() const {
+        return _max.imag() - _min.imag();
+    }
+    std::complex<NumberType> center() const {
+        return std::complex<NumberType>(realRange() / 2.0, imagRange() / 2.0);
+    }
+    std::complex<NumberType> valueAtPixel(int x, int y, int width, int height) {
+        NumberType onePixelInReal = realRange() / width;
+        NumberType onePixelInImag = imagRange() / height;
+        NumberType valueReal = _min.real() +
+                static_cast<NumberType>(x) * onePixelInReal;
+        NumberType valueImag = _min.imag() +
+                static_cast<NumberType>(y) * onePixelInImag;
+        return std::complex<NumberType>(valueReal, valueImag);
+    }
 private:
-	std::complex<NumberType> _min;
-	std::complex<NumberType> _max;
+    std::complex<NumberType> _min;
+    std::complex<NumberType> _max;
 };
 
 template<class NumberType>
 ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
-		NumberType realCenter, NumberType imagCenter, NumberType imagRange,
-		int xMin, int yMin, int xMax, int yMax) {
-	int yRange = yMax - yMin;
-	NumberType pixelPerValue = static_cast<NumberType>(yRange) / imagRange;
-	int xRange = xMax - xMin;
-	NumberType realRange = static_cast<NumberType>(xRange) / pixelPerValue;
-	NumberType realRangeHalf = realRange / 2.0;
-	NumberType realMin = realCenter - realRangeHalf;
-	NumberType realMax = realCenter + realRangeHalf;
-	NumberType imagRangeHalf = imagRange / 2.0;
-	NumberType imagMin = imagCenter - imagRangeHalf;
-	NumberType imagMax = imagCenter + imagRangeHalf;
-	return ComplexPlaneSection<NumberType>(
-			std::complex<NumberType>(realMin, imagMin),
-			std::complex<NumberType>(realMax, imagMax));
+        NumberType realCenter, NumberType imagCenter, NumberType imagRange,
+        int xMin, int yMin, int xMax, int yMax) {
+    int yRange = yMax - yMin;
+    NumberType pixelPerValue = static_cast<NumberType>(yRange) / imagRange;
+    int xRange = xMax - xMin;
+    NumberType realRange = static_cast<NumberType>(xRange) / pixelPerValue;
+    NumberType realRangeHalf = realRange / 2.0;
+    NumberType realMin = realCenter - realRangeHalf;
+    NumberType realMax = realCenter + realRangeHalf;
+    NumberType imagRangeHalf = imagRange / 2.0;
+    NumberType imagMin = imagCenter - imagRangeHalf;
+    NumberType imagMax = imagCenter + imagRangeHalf;
+    return ComplexPlaneSection<NumberType>(
+            std::complex<NumberType>(realMin, imagMin),
+            std::complex<NumberType>(realMax, imagMax));
 }
 
 template<class NumberType>
 ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
-		NumberType realCenter, NumberType imagCenter, NumberType imagRange,
-		int width, int height) {
-	return complexPlaneSectionAroundCenter(realCenter, imagCenter, imagRange,
-			0, 0, width, height);
+        NumberType realCenter, NumberType imagCenter, NumberType imagRange,
+        int width, int height) {
+    return complexPlaneSectionAroundCenter(realCenter, imagCenter, imagRange,
+            0, 0, width, height);
 }
 
 template<class NumberType>
 ComplexPlaneSection<NumberType> zoomedComplexPlane (
-		const ComplexPlaneSection<NumberType>& originalCps,
-		const std::complex<NumberType> newCenter, NumberType factor) {
-	NumberType step = 1.0 - 1.0 / factor;
+        const ComplexPlaneSection<NumberType>& originalCps,
+        const std::complex<NumberType> newCenter, NumberType factor) {
+    NumberType step = 1.0 - 1.0 / factor;
     NumberType newCenterRealDistanceToMin =
-    		newCenter.real() - originalCps.min().real();
+            newCenter.real() - originalCps.min().real();
     NumberType newCenterRealDistanceToMax =
-    		originalCps.max().real() - newCenter.real();
+            originalCps.max().real() - newCenter.real();
     NumberType cNewMinReal =
-    		originalCps.min().real() + newCenterRealDistanceToMin * step;
+            originalCps.min().real() + newCenterRealDistanceToMin * step;
     NumberType cNewMaxReal =
-    		originalCps.max().real() - newCenterRealDistanceToMax * step;
+            originalCps.max().real() - newCenterRealDistanceToMax * step;
     NumberType newCenterImagDistanceToMin =
-    		newCenter.imag() - originalCps.min().imag();
+            newCenter.imag() - originalCps.min().imag();
     NumberType newCenterImagDistanceToMax =
-    		originalCps.max().imag() - newCenter.imag();
+            originalCps.max().imag() - newCenter.imag();
     NumberType cNewMinImag =
-    		originalCps.min().imag() + newCenterImagDistanceToMin * step;
+            originalCps.min().imag() + newCenterImagDistanceToMin * step;
     NumberType cNewMaxImag =
-    		originalCps.max().imag() - newCenterImagDistanceToMax * step;
-	return ComplexPlaneSection<NumberType>(
-			std::complex<NumberType>(cNewMinReal, cNewMinImag),
-			std::complex<NumberType>(cNewMaxReal, cNewMaxImag));
+            originalCps.max().imag() - newCenterImagDistanceToMax * step;
+    return ComplexPlaneSection<NumberType>(
+            std::complex<NumberType>(cNewMinReal, cNewMinImag),
+            std::complex<NumberType>(cNewMaxReal, cNewMaxImag));
 }
 
 // The ComplexPlaneCalculator performs function f(c), with c as a
@@ -443,7 +460,7 @@ public:
     typedef std::size_t Size;
 
     ComplexPlaneCalculator(const ComplexPlaneSection<NumberType>& cps,
-			Surface::InterlacedCanvas& canvas, Functor f)
+            Surface::InterlacedCanvas& canvas, Functor f)
     : _cps(cps)
     , _canvas(canvas)
     , _f(f) {
@@ -454,10 +471,10 @@ public:
         const NumberType rasterReal = realRange / _canvas.width();
         const NumberType rasterImag = imagRange / _canvas.height();
         std::vector<SimdUnion> cRealValues;
-        cRealValues.reserve(_canvas.width() / 8);
-        for (Size x=0; x<_canvas.width(); x+=8) {
+        cRealValues.reserve(_canvas.width() / MAX_VECTORIZATION);
+        for (Size x=0; x<_canvas.width(); x+=MAX_VECTORIZATION) {
             SimdUnion cReals;
-            for (Size i=0; i<8; i++) {
+            for (Size i=0; i<MAX_VECTORIZATION; i++) {
                 cReals.val[i] = _cps.min().real() + (x+i)*rasterReal;
             }
             cRealValues.push_back(cReals);
@@ -467,9 +484,9 @@ public:
             const NumberType cImagValue = _cps.min().imag() + line.y*rasterImag;
             for (const SimdUnion& cReals : cRealValues) {
                 const VComplex c(cReals, cImagValue);
-                std::array<Uint32, 8> colors (_f(c));
+                std::array<Uint32, MAX_VECTORIZATION> colors (_f(c));
                 std::copy(colors.begin(), colors.end(), nextPixels);
-                nextPixels+=8;
+                nextPixels+=MAX_VECTORIZATION;
             }
         }
     }
@@ -491,30 +508,30 @@ public:
     typedef std::size_t Size;
 
     MandelbrotFunction(Size maxIterations, ColorEncoder colorEncoder,
-    		NumberType pointOfNoReturn = 2.0)
+            NumberType pointOfNoReturn = 2.0)
     : _maxIterations(maxIterations)
     , _colorEncoder(colorEncoder)
     , _squaredPointOfNoReturn(pointOfNoReturn * pointOfNoReturn) {
     }
-    std::array<Uint32, 8> operator()(const VComplex& c) const {
-    	std::array<Size, 8> iterations;
-    	std::fill(iterations.begin(), iterations.end(), _maxIterations);
+    std::array<Uint32, MAX_VECTORIZATION> operator()(const VComplex& c) const {
+        std::array<Size, MAX_VECTORIZATION> iterations;
+        std::fill(iterations.begin(), iterations.end(), _maxIterations);
         VComplex z = c;
         typename VComplex::SquaredAbs squaredAbs;
-		for (Size i=0; i<_maxIterations; i++) {
-			z = z.square(squaredAbs) + c;
-			int done = 0;
-			for (Size j=0; j<8; j++) {
-				if (iterations[j] == _maxIterations && squaredAbs.
-						thresholdExceeded(j, _squaredPointOfNoReturn)) {
-					iterations[j] = i;
-					done++;
-				}
-			}
-			if (done >= 8) {
-				break;
-			}
-		}
+        for (Size i=0; i<_maxIterations; i++) {
+            z = z.square(squaredAbs) + c;
+            std::size_t done = 0;
+            for (Size j=0; j<MAX_VECTORIZATION; j++) {
+                if (iterations[j] == _maxIterations && squaredAbs.
+                        thresholdExceeded(j, _squaredPointOfNoReturn)) {
+                    iterations[j] = i;
+                    done++;
+                }
+            }
+            if (done >= MAX_VECTORIZATION) {
+                break;
+            }
+        }
         return _colorEncoder(iterations, _maxIterations);
     }
 private:
@@ -528,20 +545,21 @@ class SimpleColorEncoder {
 public:
     typedef std::size_t Size;
 
-    std::array<Uint32, 8> operator()(
-    		const std::array<Size, 8>& iterations, Size maxIterations) const {
-        std::array<Uint32, 8> colors;
+    std::array<Uint32, MAX_VECTORIZATION> operator()(
+            const std::array<Size, MAX_VECTORIZATION>& iterations,
+			Size maxIterations) const {
+        std::array<Uint32, MAX_VECTORIZATION> colors;
         for (Size i=0; i<iterations.size(); i++) {
-        	Uint32 it = iterations[i];
-        	if (it < maxIterations) {
-				Uint32 alpha = 0xff000000;
-				Uint32 blue = ((it * 5) % 0x100) << 16;
-				Uint32 green = ((it * 3) % 0x100) << 8;
-				Uint32 red = ((it * 2) % 0x100);
-				colors[i] = alpha | red | green | blue;
-        	} else {
-        		colors[i] = 0x00000000;
-        	}
+            Uint32 it = iterations[i];
+            if (it < maxIterations) {
+                Uint32 alpha = 0xff000000;
+                Uint32 blue = ((it * 5) % 0x100) << 16;
+                Uint32 green = ((it * 3) % 0x100) << 8;
+                Uint32 red = ((it * 2) % 0x100);
+                colors[i] = alpha | red | green | blue;
+            } else {
+                colors[i] = 0x00000000;
+            }
         }
         return colors;
     }
@@ -560,11 +578,11 @@ typedef NoSimdUnion SystemSimdUnion;
 } // end namespace
 
 int main(int argc, char** argv) {
-	SdlContext sdlContext;
+    SdlContext sdlContext;
     typedef SystemSimdUnion::NumberType NumberType;
     typedef ComplexPlaneCalculator<SystemSimdUnion,
             MandelbrotFunction<SystemSimdUnion,
-			SimpleColorEncoder>> MandelbrotCalculator;
+            SimpleColorEncoder>> MandelbrotCalculator;
     std::size_t width = 1024;
     std::size_t height = 768;
     const NumberType iterationsFactor = 0.0025;
@@ -575,7 +593,7 @@ int main(int argc, char** argv) {
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps = complexPlaneSectionAroundCenter(
-    		-0.5, 0.0, 2.0, width, height);
+            -0.5, 0.0, 2.0, width, height);
     std::complex<NumberType> cpsCenter = cps.center();
     const NumberType fastZoomFactor = 1.05;
     const NumberType slowZoomFactor = 1.01;
@@ -584,45 +602,45 @@ int main(int argc, char** argv) {
     std::complex<NumberType> mousePos = cpsCenter.real();
 
     while(!quit) {
-	    std::vector<std::thread> threads;
-	    for (auto& canvas : canvasVector) {
-	        threads.emplace_back(MandelbrotCalculator (cps, canvas,
-	                MandelbrotFunction<SystemSimdUnion,
-					SimpleColorEncoder> (maxIterations,
-							SimpleColorEncoder())));
-	    }
-	    for (auto& t : threads) {
-	        t.join();
-	    }
-	    Texture texture = renderer.CreateSdlTexture(surface);
-	    renderer.Clear();
-	    renderer.Copy(texture);
-	    renderer.Present();
-	    while (SDL_PollEvent(&input) > 0) {
-			if (input.type == SDL_QUIT) {
-				quit = true;
-				break;
-			} else if (input.type == SDL_MOUSEMOTION) {
-				int x,y;
-				SDL_GetMouseState(&x,&y);
-				mousePos = cps.valueAtPixel(x, y, width ,height);
-			} else if (input.type == SDL_MOUSEBUTTONDOWN) {
-				if (input.button.button == SDL_BUTTON_LEFT) {
-					zoomFactor = fastZoomFactor;
-				} else if (input.button.button == SDL_BUTTON_RIGHT) {
-					zoomFactor = 1.0 / fastZoomFactor;
-				}
-			} else if (input.type == SDL_MOUSEBUTTONUP) {
-				if (input.button.button == SDL_BUTTON_LEFT) {
-					zoomFactor = slowZoomFactor;
-				} else if (input.button.button == SDL_BUTTON_RIGHT) {
-					zoomFactor = 1.0 / slowZoomFactor;
-				}
-			}
-		}
-    	cps = zoomedComplexPlane(cps, mousePos, zoomFactor);
-    	maxIterations = maxIterations +
-    			maxIterations * (zoomFactor * iterationsFactor);
-	}
+        std::vector<std::thread> threads;
+        for (auto& canvas : canvasVector) {
+            threads.emplace_back(MandelbrotCalculator (cps, canvas,
+                    MandelbrotFunction<SystemSimdUnion,
+                    SimpleColorEncoder> (maxIterations,
+                            SimpleColorEncoder())));
+        }
+        for (auto& t : threads) {
+            t.join();
+        }
+        Texture texture = renderer.CreateSdlTexture(surface);
+        renderer.Clear();
+        renderer.Copy(texture);
+        renderer.Present();
+        while (SDL_PollEvent(&input) > 0) {
+            if (input.type == SDL_QUIT) {
+                quit = true;
+                break;
+            } else if (input.type == SDL_MOUSEMOTION) {
+                int x,y;
+                SDL_GetMouseState(&x,&y);
+                mousePos = cps.valueAtPixel(x, y, width ,height);
+            } else if (input.type == SDL_MOUSEBUTTONDOWN) {
+                if (input.button.button == SDL_BUTTON_LEFT) {
+                    zoomFactor = fastZoomFactor;
+                } else if (input.button.button == SDL_BUTTON_RIGHT) {
+                    zoomFactor = 1.0 / fastZoomFactor;
+                }
+            } else if (input.type == SDL_MOUSEBUTTONUP) {
+                if (input.button.button == SDL_BUTTON_LEFT) {
+                    zoomFactor = slowZoomFactor;
+                } else if (input.button.button == SDL_BUTTON_RIGHT) {
+                    zoomFactor = 1.0 / slowZoomFactor;
+                }
+            }
+        }
+        cps = zoomedComplexPlane(cps, mousePos, zoomFactor);
+        maxIterations = maxIterations +
+                maxIterations * (zoomFactor * iterationsFactor);
+    }
     return 0;
 }
