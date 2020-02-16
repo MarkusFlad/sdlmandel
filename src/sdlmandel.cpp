@@ -592,8 +592,9 @@ int main(int argc, char** argv) {
     Window window("Mandelbrot", width, height);
     Renderer renderer(window);
     SDL_Event input;
-    ComplexPlaneSection<NumberType> cps = complexPlaneSectionAroundCenter(
-            -0.5, 0.0, 2.0, width, height);
+    ComplexPlaneSection<NumberType> cps =
+    		complexPlaneSectionAroundCenter<double>(
+    				-0.5, 0.0, 2.0, width, height);
     std::complex<NumberType> cpsCenter = cps.center();
     const NumberType fastZoomFactor = 1.05;
     const NumberType slowZoomFactor = 1.01;
