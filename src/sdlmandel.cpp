@@ -593,7 +593,7 @@ int main(int argc, char** argv) {
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps =
-    		complexPlaneSectionAroundCenter<double>(
+    		complexPlaneSectionAroundCenter<NumberType>(
     				-0.5, 0.0, 2.0, width, height);
     std::complex<NumberType> cpsCenter = cps.center();
     const NumberType fastZoomFactor = 1.05;
