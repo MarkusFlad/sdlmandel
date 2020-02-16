@@ -630,8 +630,6 @@ int main(int argc, char** argv) {
     const NumberType iterationsFactor = 0.0025;
     NumberType maxIterations = 75.0;
     Resolution resolution = getDesktopCompatibleResolution(0.5);
-    std::cout << numberOfCpuCores << "\n";
-    std::cout << resolution.height() << "\n";
     Surface surface(resolution);
     auto canvasVector = surface.provideInterlacedCanvas(numberOfCpuCores);
     Window window("Mandelbrot", resolution, true);
@@ -646,24 +644,29 @@ int main(int argc, char** argv) {
     const NumberType fastZoomFactor = 1.05;
     const NumberType slowZoomFactor = 1.01;
     NumberType zoomFactor = slowZoomFactor;
+    bool pause = false;
     bool quit = false;
     std::complex<NumberType> mousePos = cpsCenter.real();
 
     while(!quit) {
         std::vector<std::thread> threads;
-        for (auto& canvas : canvasVector) {
-            threads.emplace_back(MandelbrotCalculator (cps, canvas,
-                    MandelbrotFunction<SystemSimdUnion,
-                    SimpleColorEncoder> (maxIterations,
-                            SimpleColorEncoder())));
+        if (pause) {
+        	SDL_Delay(40);
+        } else {
+			for (auto& canvas : canvasVector) {
+				threads.emplace_back(MandelbrotCalculator (cps, canvas,
+						MandelbrotFunction<SystemSimdUnion,
+						SimpleColorEncoder> (maxIterations,
+								SimpleColorEncoder())));
+			}
+			for (auto& t : threads) {
+				t.join();
+			}
+	        Texture texture = renderer.CreateSdlTexture(surface);
+	        renderer.Clear();
+	        renderer.Copy(texture);
+	        renderer.Present();
         }
-        for (auto& t : threads) {
-            t.join();
-        }
-        Texture texture = renderer.CreateSdlTexture(surface);
-        renderer.Clear();
-        renderer.Copy(texture);
-        renderer.Present();
         while (SDL_PollEvent(&input) > 0) {
             if (input.type == SDL_QUIT) {
                 quit = true;
@@ -672,6 +675,8 @@ int main(int argc, char** argv) {
             	if (input.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
                     quit = true;
                     break;
+            	} else if (input.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+            		pause = !pause;
             	}
             } else if (input.type == SDL_MOUSEMOTION) {
                 int x,y;
@@ -691,6 +696,9 @@ int main(int argc, char** argv) {
                     zoomFactor = 1.0 / slowZoomFactor;
                 }
             }
+        }
+        if (pause) {
+        	continue;
         }
         cps = zoomedComplexPlane(cps, mousePos, zoomFactor);
         if (zoomFactor > 1.0) {
