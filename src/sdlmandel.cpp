@@ -175,10 +175,27 @@ class Window {
 private:
     SDL_Window* _window;
 public:
-    Window(std::string title, int width, int height)
+    Window(std::string title, int width, int height, bool fullscreen)
     : _window(SDL_CreateWindow(title.c_str(),
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
             width, height, 0)) {
+    	if (fullscreen) {
+    		SDL_SetWindowFullscreen(_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    	}
+    }
+    int displayedWidth() {
+    	SDL_DisplayMode mode;
+    	if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
+    		return mode.w;
+    	}
+    	return 0;
+    }
+    int displayedHeight() {
+    	SDL_DisplayMode mode;
+    	if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
+    		return mode.h;
+    	}
+    	return 0;
     }
     ~Window() {
         if (_window) {
@@ -396,11 +413,9 @@ private:
 template<class NumberType>
 ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
         NumberType realCenter, NumberType imagCenter, NumberType imagRange,
-        int xMin, int yMin, int xMax, int yMax) {
-    int yRange = yMax - yMin;
-    NumberType pixelPerValue = static_cast<NumberType>(yRange) / imagRange;
-    int xRange = xMax - xMin;
-    NumberType realRange = static_cast<NumberType>(xRange) / pixelPerValue;
+        int width, int height) {
+    NumberType pixelPerValue = static_cast<NumberType>(height) / imagRange;
+    NumberType realRange = static_cast<NumberType>(width) / pixelPerValue;
     NumberType realRangeHalf = realRange / 2.0;
     NumberType realMin = realCenter - realRangeHalf;
     NumberType realMax = realCenter + realRangeHalf;
@@ -410,14 +425,6 @@ ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
     return ComplexPlaneSection<NumberType>(
             std::complex<NumberType>(realMin, imagMin),
             std::complex<NumberType>(realMax, imagMax));
-}
-
-template<class NumberType>
-ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
-        NumberType realCenter, NumberType imagCenter, NumberType imagRange,
-        int width, int height) {
-    return complexPlaneSectionAroundCenter(realCenter, imagCenter, imagRange,
-            0, 0, width, height);
 }
 
 template<class NumberType>
@@ -583,13 +590,15 @@ int main(int argc, char** argv) {
     typedef ComplexPlaneCalculator<SystemSimdUnion,
             MandelbrotFunction<SystemSimdUnion,
             SimpleColorEncoder>> MandelbrotCalculator;
-    std::size_t width = 1024;
-    std::size_t height = 768;
+    std::size_t width = 1920;
+    std::size_t height = 1080;
     const NumberType iterationsFactor = 0.0025;
-    NumberType maxIterations = 100.0;
+    NumberType maxIterations = 75.0;
     Surface surface(width, height);
     auto canvasVector = surface.provideInterlacedCanvas(numberOfCpuCores);
-    Window window("Mandelbrot", width, height);
+    Window window("Mandelbrot", width, height, true);
+    int displayedWidth = window.displayedWidth();
+    int displayedHeight = window.displayedHeight();
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps =
@@ -621,10 +630,16 @@ int main(int argc, char** argv) {
             if (input.type == SDL_QUIT) {
                 quit = true;
                 break;
+            } else if (input.type == SDL_KEYUP) {
+            	if (input.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                    quit = true;
+                    break;
+            	}
             } else if (input.type == SDL_MOUSEMOTION) {
                 int x,y;
                 SDL_GetMouseState(&x,&y);
-                mousePos = cps.valueAtPixel(x, y, width ,height);
+                mousePos = cps.valueAtPixel(x, y,
+                		displayedWidth ,displayedHeight);
             } else if (input.type == SDL_MOUSEBUTTONDOWN) {
                 if (input.button.button == SDL_BUTTON_LEFT) {
                     zoomFactor = fastZoomFactor;
