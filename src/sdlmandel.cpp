@@ -24,19 +24,19 @@ constexpr static std::size_t MAX_VECTORIZATION = 8;
 // Class representing a resolution of a screen in pixels.
 class Resolution {
 public:
-	Resolution(int width, int height)
-	: _width (width)
-	, _height (height) {
-	}
-	int width() const {
-		return _width;
-	}
-	int height() const {
-		return _height;
-	}
+    Resolution(int width, int height)
+    : _width (width)
+    , _height (height) {
+    }
+    int width() const {
+        return _width;
+    }
+    int height() const {
+        return _height;
+    }
 private:
-	int _width;
-	int _height;
+    int _width;
+    int _height;
 };
 
 // Class that encapsulates the SDL Surface. Instances of this class can be used
@@ -58,7 +58,7 @@ public:
 public:
     Surface(const Resolution& resolution)
     : _surface(SDL_CreateRGBSurface(0, resolution.width(), resolution.height(),
-    		COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
+            COLOR_DEPTH, R_MASK, G_MASK, B_MASK, A_MASK))
     , _pixelNumber (resolution.width() * resolution.height()) {
     }
     ~Surface() {
@@ -196,24 +196,24 @@ public:
     Window(std::string title, const Resolution& resolution, bool fullscreen)
     : _window(SDL_CreateWindow(title.c_str(),
             SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-			resolution.width(), resolution.height(), 0)) {
-    	if (fullscreen) {
-    		SDL_SetWindowFullscreen(_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-    	}
+            resolution.width(), resolution.height(), 0)) {
+        if (fullscreen) {
+            SDL_SetWindowFullscreen(_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        }
     }
     int displayedWidth() {
-    	SDL_DisplayMode mode;
-    	if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
-    		return mode.w;
-    	}
-    	return 0;
+        SDL_DisplayMode mode;
+        if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
+            return mode.w;
+        }
+        return 0;
     }
     int displayedHeight() {
-    	SDL_DisplayMode mode;
-    	if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
-    		return mode.h;
-    	}
-    	return 0;
+        SDL_DisplayMode mode;
+        if (SDL_GetWindowDisplayMode(_window, &mode) == 0) {
+            return mode.h;
+        }
+        return 0;
     }
     ~Window() {
         if (_window) {
@@ -433,9 +433,9 @@ ComplexPlaneSection<NumberType> complexPlaneSectionAroundCenter (
         NumberType realCenter, NumberType imagCenter, NumberType imagRange,
         const Resolution& resolution) {
     NumberType pixelPerValue =
-    		static_cast<NumberType>(resolution.height()) / imagRange;
+            static_cast<NumberType>(resolution.height()) / imagRange;
     NumberType realRange =
-    		static_cast<NumberType>(resolution.width()) / pixelPerValue;
+            static_cast<NumberType>(resolution.width()) / pixelPerValue;
     NumberType realRangeHalf = realRange / 2.0;
     NumberType realMin = realCenter - realRangeHalf;
     NumberType realMax = realCenter + realRangeHalf;
@@ -574,7 +574,7 @@ public:
 
     std::array<Uint32, MAX_VECTORIZATION> operator()(
             const std::array<Size, MAX_VECTORIZATION>& iterations,
-			Size maxIterations) const {
+            Size maxIterations) const {
         std::array<Uint32, MAX_VECTORIZATION> colors;
         for (Size i=0; i<iterations.size(); i++) {
             Uint32 it = iterations[i];
@@ -593,20 +593,20 @@ public:
 };
 
 int fitToNextRaster(int n, int raster) {
-	return n + (raster - n % raster);
+    return n + (raster - n % raster);
 }
 Resolution getFittingResolution (int desiredWidth, int desiredHeight) {
-	return Resolution(fitToNextRaster(desiredWidth, MAX_VECTORIZATION),
-			fitToNextRaster(desiredHeight, numberOfCpuCores));
+    return Resolution(fitToNextRaster(desiredWidth, MAX_VECTORIZATION),
+            fitToNextRaster(desiredHeight, numberOfCpuCores));
 }
 Resolution getDesktopCompatibleResolution (double factor) {
-	SDL_DisplayMode mode;
-	if (SDL_GetDesktopDisplayMode(0, &mode) == 0) {
-		int width = mode.w * factor;
-		int height = mode.h * factor;
-		return getFittingResolution(width, height);
-	}
-	return Resolution(0, 0);
+    SDL_DisplayMode mode;
+    if (SDL_GetDesktopDisplayMode(0, &mode) == 0) {
+        int width = mode.w * factor;
+        int height = mode.h * factor;
+        return getFittingResolution(width, height);
+    }
+    return Resolution(0, 0);
 }
 
 #if defined(__AVX512BW__)
@@ -638,8 +638,8 @@ int main(int argc, char** argv) {
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps =
-    		complexPlaneSectionAroundCenter<NumberType>(
-    				-0.5, 0.0, 2.0, resolution);
+            complexPlaneSectionAroundCenter<NumberType>(
+                    -0.5, 0.0, 2.0, resolution);
     std::complex<NumberType> cpsCenter = cps.center();
     const NumberType fastZoomFactor = 1.05;
     const NumberType slowZoomFactor = 1.01;
@@ -651,38 +651,38 @@ int main(int argc, char** argv) {
     while(!quit) {
         std::vector<std::thread> threads;
         if (pause) {
-        	SDL_Delay(40);
+            SDL_Delay(40);
         } else {
-			for (auto& canvas : canvasVector) {
-				threads.emplace_back(MandelbrotCalculator (cps, canvas,
-						MandelbrotFunction<SystemSimdUnion,
-						SimpleColorEncoder> (maxIterations,
-								SimpleColorEncoder())));
-			}
-			for (auto& t : threads) {
-				t.join();
-			}
-	        Texture texture = renderer.CreateSdlTexture(surface);
-	        renderer.Clear();
-	        renderer.Copy(texture);
-	        renderer.Present();
+            for (auto& canvas : canvasVector) {
+                threads.emplace_back(MandelbrotCalculator (cps, canvas,
+                        MandelbrotFunction<SystemSimdUnion,
+                        SimpleColorEncoder> (maxIterations,
+                                SimpleColorEncoder())));
+            }
+            for (auto& t : threads) {
+                t.join();
+            }
+            Texture texture = renderer.CreateSdlTexture(surface);
+            renderer.Clear();
+            renderer.Copy(texture);
+            renderer.Present();
         }
         while (SDL_PollEvent(&input) > 0) {
             if (input.type == SDL_QUIT) {
                 quit = true;
                 break;
             } else if (input.type == SDL_KEYUP) {
-            	if (input.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                if (input.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
                     quit = true;
                     break;
-            	} else if (input.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-            		pause = !pause;
-            	}
+                } else if (input.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+                    pause = !pause;
+                }
             } else if (input.type == SDL_MOUSEMOTION) {
                 int x,y;
                 SDL_GetMouseState(&x,&y);
                 mousePos = cps.valueAtPixel(x, y,
-                		displayedWidth ,displayedHeight);
+                        displayedWidth ,displayedHeight);
             } else if (input.type == SDL_MOUSEBUTTONDOWN) {
                 if (input.button.button == SDL_BUTTON_LEFT) {
                     zoomFactor = fastZoomFactor;
@@ -698,15 +698,15 @@ int main(int argc, char** argv) {
             }
         }
         if (pause) {
-        	continue;
+            continue;
         }
         cps = zoomedComplexPlane(cps, mousePos, zoomFactor);
         if (zoomFactor > 1.0) {
-			maxIterations = maxIterations +
-					maxIterations * (zoomFactor * iterationsFactor);
+            maxIterations = maxIterations +
+                    maxIterations * (zoomFactor * iterationsFactor);
         } else if (zoomFactor < 1.0) {
-			maxIterations = maxIterations -
-					maxIterations * (zoomFactor * iterationsFactor);
+            maxIterations = maxIterations -
+                    maxIterations * (zoomFactor * iterationsFactor);
         }
     }
     return 0;
