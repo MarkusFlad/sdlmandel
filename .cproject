@@ -80,6 +80,8 @@
                                     <listOptionValue builtIn="false" value="pthread"/>
                                     									
                                     <listOptionValue builtIn="false" value="SDL2"/>
+                                    									
+                                    <listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="SDL2_ttf"/>
                                     								
                                 </option>
                                 								
@@ -190,6 +192,8 @@
                                     <listOptionValue builtIn="false" value="pthread"/>
                                     									
                                     <listOptionValue builtIn="false" value="SDL2"/>
+                                    									
+                                    <listOptionValue builtIn="false" srcPrefixMapping="" srcRootPath="" value="SDL2_ttf"/>
                                     								
                                 </option>
                                 								

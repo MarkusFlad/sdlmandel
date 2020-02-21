@@ -1,14 +1,18 @@
 #include <string>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <vector>
 #include <complex>
 #include <algorithm>
 #include <thread>
 #include <climits>
+#include <chrono>
 #if defined(__AVX512BW__) || defined(__AVX__) || defined(__SSE__)
 #include <immintrin.h>
 #endif
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 
 // Put everything in a namespace forces inlining
 namespace {
@@ -182,10 +186,49 @@ class SdlContext {
 public:
     SdlContext() {
         SDL_Init(SDL_INIT_EVERYTHING);
+        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+        TTF_Init();
     }
     ~SdlContext() {
+    	TTF_Quit();
         SDL_Quit();
     }
+};
+
+// Class that encapsulates a SDL_TTF "Sans" Font.
+class Font {
+private:
+	TTF_Font* _font;
+public:
+	Font(TTF_Font* font)
+    : _font(font) {
+    }
+    ~Font() {
+        if (_font) {
+            TTF_CloseFont(_font);
+        }
+    }
+    static TTF_Font* ubuntuMono() {
+    	return TTF_OpenFont(
+    			"/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf", 96);
+    }
+    friend class TextSurface;
+};
+
+class TextSurface {
+private:
+	SDL_Surface* _surface;
+	static constexpr SDL_Color WHITE = {255, 255, 255};
+public:
+	TextSurface(const std::string& text, Font& font)
+	: _surface(TTF_RenderText_Solid(font._font, text.c_str(), WHITE)) {
+	}
+	~TextSurface() {
+		if (_surface) {
+			SDL_FreeSurface(_surface);
+		}
+	}
+	friend class Renderer;
 };
 
 // Class that encapsulates an SDL window. Represents a Window on the screen.
@@ -239,8 +282,19 @@ public:
     SDL_Texture* CreateSdlTexture(Surface& surface) {
         return SDL_CreateTextureFromSurface(_renderer, surface._surface);
     }
+    SDL_Texture* CreateSdlTexture(TextSurface& textSurface) {
+        return SDL_CreateTextureFromSurface(_renderer, textSurface._surface);
+    }
     void Copy(Texture& texture) {
         SDL_RenderCopy(_renderer, texture._texture, NULL, NULL);
+    }
+    void Copy(Texture& texture, int x, int y, int w, int h) {
+    	SDL_Rect messageRect;
+    	messageRect.x = x;
+    	messageRect.y = y;
+    	messageRect.w = w;
+    	messageRect.h = h;
+        SDL_RenderCopy(_renderer, texture._texture, NULL, &messageRect);
     }
     void Clear() {
          SDL_RenderClear(_renderer);
@@ -628,13 +682,19 @@ int main(int argc, char** argv) {
             MandelbrotFunction<SystemSimdUnion,
             SimpleColorEncoder>> MandelbrotCalculator;
     const NumberType iterationsFactor = 0.0025;
-    NumberType maxIterations = 75.0;
-    Resolution resolution = getDesktopCompatibleResolution(0.5);
+    NumberType maxIterations = 100.0;
+    Resolution resolution = getDesktopCompatibleResolution(0.75);
+    Font font(Font::ubuntuMono());
     Surface surface(resolution);
     auto canvasVector = surface.provideInterlacedCanvas(numberOfCpuCores);
     Window window("Mandelbrot", resolution, true);
     int displayedWidth = window.displayedWidth();
     int displayedHeight = window.displayedHeight();
+    double textRatio = 0.1;
+    int widthText = static_cast<int>(textRatio * displayedWidth);
+    int heightText = static_cast<int>(textRatio * displayedHeight);
+    int xPosText = displayedWidth - widthText;
+    int yPosText = displayedHeight - heightText;
     Renderer renderer(window);
     SDL_Event input;
     ComplexPlaneSection<NumberType> cps =
@@ -647,9 +707,12 @@ int main(int argc, char** argv) {
     bool pause = false;
     bool quit = false;
     std::complex<NumberType> mousePos = cpsCenter.real();
+    bool oneImageDrawn = false;
+	auto startTime = std::chrono::steady_clock::now();
 
     while(!quit) {
-        std::vector<std::thread> threads;
+    	auto endTime = std::chrono::steady_clock::now();
+    	std::vector<std::thread> threads;
         if (pause) {
             SDL_Delay(40);
         } else {
@@ -662,9 +725,22 @@ int main(int argc, char** argv) {
             for (auto& t : threads) {
                 t.join();
             }
-            Texture texture = renderer.CreateSdlTexture(surface);
             renderer.Clear();
-            renderer.Copy(texture);
+            Texture textureMandelbrot = renderer.CreateSdlTexture(surface);
+            renderer.Copy(textureMandelbrot);
+            if (oneImageDrawn) {
+				auto d = std::chrono::duration_cast<std::chrono::microseconds>(
+						endTime - startTime).count();
+				std::ostringstream oss;
+				oss << std::fixed << std::setprecision(2) << 1000000.0/d
+						<< " FPS";
+				TextSurface textSurface(oss.str(), font);
+				Texture textureText = renderer.CreateSdlTexture(textSurface);
+				renderer.Copy(textureText, xPosText, yPosText, widthText,
+						heightText);
+            }
+            oneImageDrawn = true;
+            startTime = endTime;
             renderer.Present();
         }
         while (SDL_PollEvent(&input) > 0) {
